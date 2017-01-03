@@ -1,5 +1,7 @@
 package com.jaredsburrows.license.internal.report.json
 
+import com.jaredsburrows.license.internal.Developer
+import com.jaredsburrows.license.internal.License
 import groovy.transform.EqualsAndHashCode
 import groovy.transform.ToString
 import groovy.transform.builder.Builder
@@ -12,17 +14,17 @@ import groovy.transform.builder.Builder
 @ToString(includeNames = true, includePackage = false)
 final class JsonReportObject {
   final static def PROJECT = "project"
-  final static def AUTHORS = "authors"
+  final static def DEVELOPERS = "authors"
   final static def URL = "url"
   final static def YEAR = "year"
   final static def LICENSE = "license"
   final static def LICENSE_URL = "license_url"
   def jsonObject = [:]
-  def name
-  def authors
-  def url
-  def year
-  def license
+  String name
+  List<Developer> developers
+  String url
+  String year
+  List<License> licenses
 
   /**
    * Convert object to a JsonObject.
@@ -32,7 +34,7 @@ final class JsonReportObject {
     jsonObject.put(PROJECT, name)
 
     // Authors/developers
-    if (authors) jsonObject.put(AUTHORS, authors)
+    if (developers) jsonObject.put(DEVELOPERS, developers?.collect { developer -> developer?.name }?.join(", "))
 
     // Project url
     if (url) jsonObject.put(URL, url)
@@ -41,8 +43,10 @@ final class JsonReportObject {
     if (year) jsonObject.put(YEAR, year)
 
     // Project license
-    if (license?.name) jsonObject.put(LICENSE, license.name)
-    if (license?.url) jsonObject.put(LICENSE_URL, license.url)
+    if (licenses) {
+      jsonObject.put(LICENSE, licenses?.collect { license -> license?.name }?.join(", "))
+      jsonObject.put(LICENSE_URL, licenses?.collect { license -> license?.url }?.join(", "))
+    }
 
     jsonObject
   }

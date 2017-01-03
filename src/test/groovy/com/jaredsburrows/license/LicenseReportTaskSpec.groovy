@@ -35,11 +35,9 @@ final class LicenseReportTaskSpec extends Specification {
 
     // Override output directories
     assertDir = File.createTempDir()
-    assertDir.deleteOnExit()
-    htmlFile = File.createTempFile(assertDir.path, "test.html")
-    htmlFile.deleteOnExit()
-    jsonFile = File.createTempFile(assertDir.path, "test.json")
-    jsonFile.deleteOnExit()
+//    assertDir.deleteOnExit()
+    htmlFile = new File(assertDir.path, "test.html")
+    jsonFile = new File(assertDir.path, "test.json")
   }
 
   def "test java licenseReport - build.gradle with no dependencies"() {
@@ -863,5 +861,50 @@ final class LicenseReportTaskSpec extends Specification {
     json[3].license_url == "http://www.apache.org/licenses/LICENSE-2.0.txt"
     // Nothing else
     !json[4]
+  }
+
+  def "test java licenseReport - single developers, multiple licenses"() {
+    given:
+    project.repositories {
+      maven { url "https://plugins.gradle.org/m2/" }
+    }
+    project.apply plugin: "java"
+    project.dependencies {
+      delegate.compile("com.github.bumptech.glide:glide:3.7.0")
+    }
+
+    when:
+    project.evaluate()
+    new LicensePlugin().apply(project)
+
+    // Change output directory for testing
+    def task = project.tasks.getByName("licenseReport")
+    task.assetDirs = [assertDir]
+    task.htmlFile = htmlFile
+    task.jsonFile = jsonFile
+    task.execute()
+
+    then:
+    def html = new XmlParser().parse(task.htmlFile)
+    // Title
+    html.head.title.text() == "Open source licenses"
+    html.body.h3[0].text() == "Notice for libraries:"
+    // Dependencies
+    html.body.ul.li[0].text() == "Glide"
+    html.body.pre[0].text() == "Simplified BSD License, The Apache Software License, Version 2.0, http://www.opensource.org/licenses/bsd-license, http://www.apache.org/licenses/LICENSE-2.0.txt"
+    // Nothing else
+    !html.body.ul.li[1]
+    !html.body.pre[1]
+
+    def json = new JsonSlurper().parse(task.jsonFile)
+    // Dependencies
+    json[0].project == "Glide"
+    json[0].authors == "Sam Judd"
+    json[0].url == "https://github.com/bumptech/glide"
+    !json[0].year
+    json[0].license == "Simplified BSD License, The Apache Software License, Version 2.0"
+    json[0].license_url == "http://www.opensource.org/licenses/bsd-license, http://www.apache.org/licenses/LICENSE-2.0.txt"
+    // Nothing else
+    !json[1]
   }
 }

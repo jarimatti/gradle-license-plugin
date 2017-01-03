@@ -10,10 +10,6 @@ import groovy.transform.builder.Builder
 @Builder
 @EqualsAndHashCode(includeFields = true, useCanEqual = false)
 @ToString(includeNames = true, includePackage = false)
-final class Project {
+final class Developer {
   String name
-  List<License> licenses
-  String url
-  List<Developer> developers
-  String year
 }

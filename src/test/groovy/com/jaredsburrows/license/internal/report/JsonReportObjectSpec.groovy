@@ -1,5 +1,6 @@
 package com.jaredsburrows.license.internal.report
 
+import com.jaredsburrows.license.internal.Developer
 import com.jaredsburrows.license.internal.License
 import com.jaredsburrows.license.internal.report.json.JsonReportObject
 import spock.lang.Specification
@@ -8,8 +9,9 @@ import spock.lang.Specification
  * @author <a href="mailto:jaredsburrows@gmail.com">Jared Burrows</a>
  */
 final class JsonReportObjectSpec extends Specification {
-  def license = License.builder().name("name").url("url").build()
-  def sut = JsonReportObject.builder().name("name").authors("authors").url("url").year("year").license(license).build()
+  def developers = [Developer.builder().name("name").build()]
+  def licenses = [License.builder().name("name").url("url").build()]
+  def sut = JsonReportObject.builder().name("name").developers(developers).url("url").year("year").licenses(licenses).build()
 
   def "test get name"() {
     expect:
@@ -17,10 +19,10 @@ final class JsonReportObjectSpec extends Specification {
     sut.getName() == "name"
   }
 
-  def "test authors"() {
+  def "test developers"() {
     expect:
-    sut.authors == "authors"
-    sut.getAuthors() == "authors"
+    sut.developers == developers
+    sut.getDevelopers() == developers
   }
 
   def "test url"() {
@@ -35,40 +37,24 @@ final class JsonReportObjectSpec extends Specification {
     sut.getYear() == "year"
   }
 
-  def "test license"() {
+  def "test licenses"() {
     expect:
-    sut.license == license
-    sut.getLicense() == license
-  }
-
-  def "test to json"() {
-    given:
-    def json = sut.jsonObject()
-
-    expect:
-    json.toString() == "[project:name, authors:authors, url:url, year:year, license:name, license_url:url]"
-  }
-
-  def "test to json with missing values"() {
-    given:
-    def json = JsonReportObject.builder().name("name").authors(null).url(null).year(null).license(null).build().jsonObject()
-
-    expect:
-    json.toString() == "[project:name]"
+    sut.licenses == licenses
+    sut.getLicenses() == licenses
   }
 
   def "test equals/hashcode"() {
     given:
-    def one = JsonReportObject.builder().name("name").authors("authors").url("url").year("year").license(license).build()
-    def two = JsonReportObject.builder().name("name").authors("authors").url("url").year("year").license(license).build()
+    def one = JsonReportObject.builder().name("name").developers(developers).url("url").year("year").licenses(licenses).build()
+    def two = JsonReportObject.builder().name("name").developers(developers).url("url").year("year").licenses(licenses).build()
 
     expect:
     // Values
     one.name == two.name
-    one.authors == two.authors
+    one.developers == two.developers
     one.url == two.url
     one.year == two.year
-    one.license == two.license
+    one.licenses == two.licenses
     // Auto generated
     one.hashCode() == two.hashCode()
     // one == two

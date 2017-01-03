@@ -1,5 +1,6 @@
 package com.jaredsburrows.license
 
+import com.jaredsburrows.license.internal.Developer
 import com.jaredsburrows.license.internal.License
 import com.jaredsburrows.license.internal.Project
 import com.jaredsburrows.license.internal.report.json.JsonReport
@@ -19,12 +20,12 @@ class LicenseReportTask extends DefaultTask {
   final static def OPEN_SOURCE_LICENSES = "open_source_licenses"
   final static def HTML_EXT = ".html"
   final static def JSON_EXT = ".json"
-  def projects = []
-  def assetDirs = []
+  List<Project> projects = []
+  File[] assetDirs
   def buildType
   def variant
   def productFlavors = []
-  def isJavaProject
+  boolean isJavaProject
   @OutputFile File htmlFile
   @OutputFile File jsonFile
 
@@ -32,8 +33,8 @@ class LicenseReportTask extends DefaultTask {
     isJavaProject = !variant
 
     generatePOMInfo()
-    createHTMLFile()
-    createJsonFile()
+    createHTMLReport()
+    createJsonReport()
   }
 
   def generatePOMInfo() {
@@ -41,7 +42,7 @@ class LicenseReportTask extends DefaultTask {
     project.configurations.create(POM_CONFIGURATION)
 
     // Add POM information to our POM configuration
-    final def configurations = new LinkedHashSet<>()
+    final def configurations = new HashSet<>()
 
     // Add default compile configuration
     configurations << project.configurations.compile
@@ -77,46 +78,49 @@ class LicenseReportTask extends DefaultTask {
       final def text = new XmlParser().parse(pom)
 
       def projectName = text.name?.text() ? text.name?.text() : text.artifactId?.text()
-      def projectAuthors = text.developers?.text()?.join(",")
+      def projectDevelopers = []
+      text.developers?.developer?.each { developer ->
+        if (developer?.name?.text()) projectDevelopers << Developer.builder()
+          .name(developer?.name?.text()?.trim())
+          .build()
+      }
       def projectURL = text.scm?.url?.text()
       def projectYear = text.inceptionYear?.text()
-      def licenseName = text.licenses?.license?.name?.text()
-      def licenseURL = text.licenses?.license?.url?.text()
+      def projectLicenses = []
+      text.licenses?.license?.each { license ->
+        if (license?.name?.text() && license?.url?.text()) projectLicenses << License.builder()
+          .name(license?.name?.text()?.trim())
+          .url(license?.url?.text()?.trim())
+          .build()
+      }
 
       // If the POM is missing a name, do not record it
       if (!projectName) return
 
-      if (projectName) projectName = projectName.trim()
-      if (projectAuthors) projectAuthors = projectAuthors.trim()
-      if (projectURL) projectURL = projectURL.trim()
-      if (projectYear) projectYear = projectYear.trim()
-      if (licenseName) licenseName = licenseName.trim()
-      if (licenseURL) licenseURL = licenseURL.trim()
+      projectLicenses.each { license ->
+        // For all "com.android.support" libraries, add Apache 2
+        if (!license.name || !license.url) {
+          logger.log(LogLevel.INFO, String.format("Project, %s, has no license in the POM file.", projectName))
 
-      // For all "com.android.support" libraries, add Apache 2
-      if (!licenseName || !licenseURL) {
-        logger.log(LogLevel.INFO, String.format("Project, %s, has no license in the POM file.", projectName))
+          def groupId = text.groupId.text()
+          if (ANDROID_SUPPORT_GROUP_ID == groupId) {
+            license.name = APACHE_LICENSE_NAME
+            license.url = APACHE_LICENSE_URL
+          } else return
+        }
 
-        if (ANDROID_SUPPORT_GROUP_ID == text.groupId.text()) {
-          licenseName = APACHE_LICENSE_NAME
-          licenseURL = APACHE_LICENSE_URL
-        } else return
+        license.name = license.name.capitalize()
       }
 
       // Update formatting
       projectName = projectName.capitalize()
-      licenseName = licenseName.capitalize()
 
-      final def license = License.builder()
-        .name(licenseName)
-        .url(licenseURL)
-        .build()
       final def project = Project.builder()
-        .name(projectName)
-        .authors(projectAuthors)
-        .license(license)
-        .url(projectURL)
-        .year(projectYear)
+        .name(projectName.trim())
+        .developers(projectDevelopers)
+        .licenses(projectLicenses)
+        .url(projectURL.trim())
+        .year(projectYear.trim())
         .build()
 
       projects << project
@@ -127,9 +131,9 @@ class LicenseReportTask extends DefaultTask {
   }
 
   /**
-   * Generated HTML license file.
+   * Generated HTML report.
    */
-  def createHTMLFile() {
+  def createHTMLReport() {
     // Remove existing file
     if (project.file(htmlFile).exists()) project.file(htmlFile).delete()
 
@@ -153,11 +157,14 @@ class LicenseReportTask extends DefaultTask {
       printStream.print("<h3>Notice for libraries:</h3><ul>")
 
       // Print libraries first
-      final def licenses = new HashSet<>()
-      projects.each { pomInfo ->
-        licenses << pomInfo.license
+      final Set<License> licenses = new HashSet<>()
+      projects.each { project ->
+        def licenseName = project.licenses?.collect { license -> license?.name?.trim() }?.join(", ")
+        def licenseUrl = project.licenses?.collect { license -> license?.url?.trim() }?.join(", ")
 
-        printStream.print(String.format("<li><a href=\"#%s\">%s</a></li>", pomInfo.license.hashCode(), pomInfo.name))
+        def license = License.builder().name(licenseName).url(licenseUrl).build()
+
+        printStream.print(String.format("<li><a href=\"#%s\">%s</a></li>", license.hashCode(), project.name))
       }
       printStream.print("</ul>")
 
@@ -174,21 +181,21 @@ class LicenseReportTask extends DefaultTask {
     }
 
     // If Android project, copy to asset directory
-    if (isJavaProject) return
+    if (!isJavaProject) {
+      // Iterate through all asset directories
+      assetDirs.each { directory ->
+        final def licenseFile = new File(directory.path, OPEN_SOURCE_LICENSES + HTML_EXT)
 
-    // Iterate through all asset directories
-    assetDirs.each { directory ->
-      final def licenseFile = new File(directory.path, OPEN_SOURCE_LICENSES + HTML_EXT)
+        // Remove existing file
+        if (project.file(licenseFile).exists()) project.file(licenseFile).delete()
 
-      // Remove existing file
-      if (project.file(licenseFile).exists()) project.file(licenseFile).delete()
+        // Create new file
+        licenseFile.parentFile.mkdirs()
+        licenseFile.createNewFile()
 
-      // Create new file
-      licenseFile.parentFile.mkdirs()
-      licenseFile.createNewFile()
-
-      // Copy HTML file to the assets directory
-      project.file(licenseFile) << project.file(htmlFile).text
+        // Copy HTML file to the assets directory
+        project.file(licenseFile) << project.file(htmlFile).text
+      }
     }
 
     // Log output directory for user
@@ -196,9 +203,9 @@ class LicenseReportTask extends DefaultTask {
   }
 
   /**
-   * Generated JSON license file.
+   * Generated JSON report.
    */
-  def createJsonFile() {
+  def createJsonReport() {
     // Remove existing file
     if (project.file(jsonFile).exists()) project.file(jsonFile).delete()
 
